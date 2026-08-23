@@ -13,8 +13,10 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import re
 import smtplib
 import ssl
+import subprocess
 import tomllib
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
@@ -25,7 +27,6 @@ from newsroom.email_edition import build_email, build_plaintext
 
 RECIPIENTS_PATH = ROOT / "recipients.toml"
 
-# Common providers. Anything else: set host and port explicitly in the config.
 PRESETS = {
     "gmail": ("smtp.gmail.com", 587),
     "outlook": ("smtp-mail.outlook.com", 587),
@@ -34,6 +35,71 @@ PRESETS = {
     "zoho": ("smtp.zoho.com", 587),
     "fastmail": ("smtp.fastmail.com", 587),
 }
+
+
+def redact(address: str) -> str:
+    """Mask an address for console output and logs."""
+    local, _, domain = address.partition("@")
+    if len(local) <= 2:
+        shown = local[:1] + "*"
+    else:
+        shown = f"{local[0]}{'*' * (len(local) - 2)}{local[-1]}"
+    return f"{shown}@{domain}"
+
+
+def preflight(verbose: bool = False) -> list[str]:
+    """Refuse to send if recipient addresses could reach the repository."""
+    problems: list[str] = []
+
+    def git(*args: str) -> str:
+        try:
+            return subprocess.run(
+                ["git", *args], cwd=ROOT, capture_output=True, text=True, timeout=10
+            ).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return ""
+
+    def note(msg: str) -> None:
+        if verbose:
+            print(f"    {msg}")
+
+    note(f"repo root: {ROOT}")
+    if not (ROOT / ".git").exists():
+        note("no .git directory — nothing can leak")
+        return problems
+
+    note(f"tracked files: {len(git('ls-files').splitlines())}")
+    if git("ls-files", "--error-unmatch", "recipients.toml"):
+        problems.append(
+            "recipients.toml is TRACKED by git. Run:\n"
+            "      git rm --cached recipients.toml && git commit -m 'untrack recipients'"
+        )
+    if git("log", "--all", "--oneline", "--", "recipients.toml"):
+        problems.append(
+            "recipients.toml appears in git HISTORY. Deleting it now is not enough — "
+            "the addresses remain in every clone. Purge with git-filter-repo, then "
+            "force-push, and treat the addresses as disclosed."
+        )
+
+    tracked = [f for f in git("ls-files").splitlines() if f.endswith((".py", ".toml", ".md"))]
+    pattern = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+    for rel in tracked:
+        path = ROOT / rel
+        if not path.is_file() or "example" in rel:
+            continue
+        try:
+            found = {
+                a
+                for a in pattern.findall(path.read_text(encoding="utf-8", errors="ignore"))
+                if not a.endswith(("example.com", "example.org"))
+            }
+        except OSError:
+            continue
+        if found:
+            problems.append(f"{rel} contains real address(es): {sorted(found)}")
+    note(f"scanned {len(tracked)} tracked .py/.toml/.md files for addresses")
+    note(f"result: {len(problems)} problem(s)")
+    return problems
 
 
 def load_config() -> dict:
@@ -83,6 +149,9 @@ def build_message(
         week=data["week"], range=data["range"], issued=data["issued"]
     )
 
+    if not recipient.get("address"):
+        raise ValueError("recipient has no address")
+
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = formataddr((sender.get("name", "This Week in AI"), sender["address"]))
@@ -91,8 +160,6 @@ def build_message(
     msg["Message-ID"] = make_msgid(domain=sender["address"].split("@")[-1])
     if reply_to := sender.get("reply_to"):
         msg["Reply-To"] = reply_to
-    # One-click unsubscribe: expected by Gmail and Yahoo for bulk senders, and
-    # the difference between the inbox and the spam folder at any volume.
     if unsub := cfg.get("unsubscribe_mailto"):
         msg["List-Unsubscribe"] = f"<mailto:{unsub}?subject=unsubscribe>"
         msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
@@ -106,6 +173,11 @@ def build_message(
     }
     msg.set_content(build_plaintext(data, web_url, **extras))
     msg.add_alternative(build_email(data, web_url, **extras), subtype="html")
+
+    # One recipient per message. No CC, no BCC, no comma-joined To — nobody in
+    # this list learns who else is on it.
+    assert msg["To"].count("@") == 1, "message addressed to more than one person"
+    assert msg["Cc"] is None and msg["Bcc"] is None, "CC/BCC must never be set"
 
     if pdf_path and Path(pdf_path).is_file():
         blob = Path(pdf_path).read_bytes()
@@ -126,6 +198,13 @@ def send(
     pdf_path: Path | None = None,
     dry_run: bool = False,
 ) -> int:
+    problems = preflight()
+    if problems:
+        print("REFUSING TO SEND — recipient addresses are exposed:\n")
+        for issue in problems:
+            print(f"  ! {issue}")
+        return 2
+
     data = json.loads(Path(data_path).read_text(encoding="utf-8"))
     cfg = load_config()
     web_url = cfg.get("web_url", "").format(issued=data["issued"], week=data["week"])
@@ -138,7 +217,7 @@ def send(
     if dry_run:
         print(f"DRY RUN — edition {data['week']}, {len(people)} recipient(s)")
         for r in people:
-            print(f"  would send to {r['address']}")
+            print(f"  would send to {redact(r['address'])}  (individual message)")
         msg = build_message(data, cfg, people[0], pdf_path=pdf_path, web_url=web_url)
         print(f"\n  Subject: {msg['Subject']}")
         print(f"  From:    {msg['From']}")
@@ -159,10 +238,10 @@ def send(
                         data, cfg, person, pdf_path=pdf_path, web_url=web_url
                     )
                 )
-                print(f"  sent  {person['address']}")
+                print(f"  sent  {redact(person['address'])}")
                 sent += 1
             except Exception as exc:  # one bad address must not stop the run
-                print(f"  FAIL  {person['address']}: {exc}")
+                print(f"  FAIL  {redact(person['address'])}: {exc}")
                 failed.append(person["address"])
 
     print(f"\n  {sent} sent, {len(failed)} failed")

@@ -16,8 +16,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from newsroom import cluster as clustering
-from newsroom import harvest, memory
+from newsroom import cluster as clustering, harvest, memory
 from newsroom.config import OUTPUT_DIR, QUARANTINE_DIR, REPORTS_DIR
 from newsroom.gates import format_gates, run_gates
 
@@ -136,6 +135,7 @@ def main() -> int:
     parser.add_argument("--send", metavar="JSON", help="email the edition to configured recipients")
     parser.add_argument("--dry-send", metavar="JSON", help="show who would receive it, send nothing")
     parser.add_argument("--cron", action="store_true", help="print the crontab line for the schedule")
+    parser.add_argument("--preflight", action="store_true", help="check no addresses can reach the repo")
     args = parser.parse_args()
 
     if args.dry_run:
@@ -161,6 +161,18 @@ def main() -> int:
         except RuntimeError:
             url = ""
         print(f"  Email:      {render_email(args.email_preview, url)}")
+        return 0
+    if args.preflight:
+        from newsroom.deliver import preflight
+
+        print("  Privacy preflight:")
+        issues = preflight(verbose=True)
+        if issues:
+            print("PRIVACY CHECK FAILED\n")
+            for i in issues:
+                print(f"  ! {i}")
+            return 2
+        print("  PRIVACY CHECK PASSED — no recipient address is tracked or in history")
         return 0
     if args.cron:
         from newsroom.deliver import cron_line
