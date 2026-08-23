@@ -1,0 +1,74 @@
+name: Weekly send
+
+# 15:00 Asia/Kolkata = 09:30 UTC. GitHub cron is UTC-only and India has no DST,
+# so this stays correct year-round.
+on:
+  schedule:
+    - cron: "30 9 * * 1"      # Mondays, 09:30 UTC = 15:00 IST
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List recipients without sending"
+        type: boolean
+        default: true
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          pip install -e .
+          pip install playwright pypdfium2
+          python -m playwright install --with-deps chromium
+
+      - name: Restore recipients from secret
+        env:
+          RECIPIENTS_TOML: ${{ secrets.RECIPIENTS_TOML }}
+        run: |
+          if [ -z "$RECIPIENTS_TOML" ]; then
+            echo "::error::RECIPIENTS_TOML secret is not set."
+            exit 1
+          fi
+          printf '%s' "$RECIPIENTS_TOML" > recipients.toml
+          echo "recipients.toml written ($(wc -l < recipients.toml) lines)"
+
+      - name: Privacy preflight
+        run: python -m newsroom.run --preflight
+
+      - name: Pick the latest edition
+        id: pick
+        run: |
+          RUN_JSON=$(ls -1 samples/week-*.json 2>/dev/null | sort | tail -n1)
+          if [ -z "$RUN_JSON" ]; then
+            echo "::error::No samples/week-*.json found. Commit an edition first."
+            exit 1
+          fi
+          echo "run_json=$RUN_JSON" >> "$GITHUB_OUTPUT"
+          echo "Edition: $RUN_JSON"
+
+      - name: Render the print PDF
+        run: python -m newsroom.run --pdf "${{ steps.pick.outputs.run_json }}"
+
+      - name: Send
+        env:
+          NEWSROOM_SMTP_PASSWORD: ${{ secrets.NEWSROOM_SMTP_PASSWORD }}
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python -m newsroom.run --dry-send "${{ steps.pick.outputs.run_json }}"
+          else
+            python -m newsroom.run --send "${{ steps.pick.outputs.run_json }}"
+          fi
+
+      - name: Shred the recipients file
+        if: always()
+        run: rm -f recipients.toml
