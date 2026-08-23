@@ -170,8 +170,21 @@ def main() -> int:
     if args.send or args.dry_send:
         from newsroom.deliver import send
 
-        run_json = args.send or args.dry_send
-        pdf = OUTPUT_DIR / f"briefing-{Path(run_json).stem.replace('week-', '')}.pdf"
+        run_json = Path(args.send or args.dry_send)
+        stamp = run_json.stem.replace("week-", "")
+        name = f"briefing-{stamp}.pdf"
+        # Look beside the run file first, then in output/. The PDF is the point
+        # of the email, so a missing one is fatal rather than a silent omission.
+        candidates = [run_json.parent / name, OUTPUT_DIR / name]
+        pdf = next((c for c in candidates if c.is_file()), None)
+        if pdf is None:
+            print(f"  No {name} found. Looked in:")
+            for c in candidates:
+                print(f"    {c}")
+            print("  Render it first:  python -m newsroom.run --pdf "
+                  f"{run_json}")
+            return 2
+        print(f"  Attaching:  {pdf}")
         return send(run_json, pdf_path=pdf, dry_run=bool(args.dry_send))
     return full_run()
 
