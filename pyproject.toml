@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "newsroom"
+version = "0.1.0"
+description = "A hierarchical, zero-cost AI-news agent: local models, open feeds, deterministic supervision."
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=1.0,<2.0",
+    "langchain-core>=1.0,<2.0",
+    "langchain-ollama>=1.0,<2.0",
+    "pydantic>=2.0",
+    "feedparser>=6.0",
+    "ddgs>=9.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+lint.select = ["E", "F", "I", "UP"]
+lint.ignore = ["E501"]

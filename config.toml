@@ -1,0 +1,105 @@
+# Newsroom — configuration.
+#
+# Everything tunable lives here so the trust model, budgets and model tiers can
+# change without touching code. Zero API keys: all inference is local (Ollama)
+# and all discovery is via open RSS/Atom feeds + keyless search.
+
+# ---------------------------------------------------------------- model tiers
+# Three tiers, mapped to the agent hierarchy. Pull them once with:
+#   ollama pull qwen2.5:14b-instruct
+#   ollama pull qwen2.5:7b-instruct
+#   ollama pull llama3.2:3b
+# Smaller machine? Drop each tier one notch; the graph does not care.
+[models]
+strong = "qwen2.5:14b-instruct"   # Tier 1  Managing Editor  (judgement, synthesis)
+mid    = "qwen2.5:7b-instruct"    # Tier 2  Leads            (allocation, adjudication)
+small  = "llama3.2:3b"            # Tier 3  Workers          (bounded, high-volume)
+host   = "http://localhost:11434"
+num_ctx = 8192
+temperature_strong = 0.4
+temperature_mid = 0.2
+temperature_small = 0.1
+
+# ------------------------------------------------------------------- budgets
+# Local inference is free in dollars but NOT free in time or RAM. The budget is
+# denominated in the things that actually run out.
+[budget]
+max_wall_clock_seconds = 1800     # hard ceiling on a whole run
+max_llm_calls = 120               # circuit breaker on runaway loops
+max_topics = 5                    # how many clusters get researched
+max_searches_per_topic = 3
+max_verify_rounds = 2             # HARD cap on re-research -> re-verify
+deep_research_topics = 3          # top N get full depth; the tail gets a brief
+
+# ------------------------------------------------------------------ harvest
+# Open feeds, no API key, no credits. arXiv and HN are the highest signal-per-
+# byte sources for AI news; the rest are general tech desks.
+[harvest]
+lookback_days = 7
+max_items = 120
+hn_min_points = 40
+feeds = [
+  "http://export.arxiv.org/rss/cs.AI",
+  "http://export.arxiv.org/rss/cs.LG",
+  "http://export.arxiv.org/rss/cs.CL",
+  "https://arstechnica.com/ai/feed/",
+  "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+  "https://techcrunch.com/category/artificial-intelligence/feed/",
+  "https://www.wired.com/feed/tag/ai/latest/rss",
+  "https://feeds.bbci.co.uk/news/technology/rss.xml",
+  "https://www.technologyreview.com/topic/artificial-intelligence/feed",
+]
+# Keyless search fallback, used only when a topic's feed coverage is thin.
+search_fallback = true
+
+# ------------------------------------------------------------- source trust
+# Enforced deterministically, before any model sees a URL.
+[trust]
+deny = [
+  "prnewswire.com", "businesswire.com", "globenewswire.com", "prweb.com",
+  "newswire.com", "einpresswire.com", "einnews.com", "accesswire.com",
+  "prlog.org", "openpr.com",
+]
+allow = [
+  "arxiv.org", "nature.com", "science.org", "acm.org", "ieee.org",
+  "reuters.com", "apnews.com", "bloomberg.com", "ft.com", "wsj.com",
+  "nytimes.com", "washingtonpost.com", "theguardian.com", "economist.com",
+  "bbc.com", "bbc.co.uk", "npr.org", "axios.com", "politico.com",
+  "arstechnica.com", "theverge.com", "wired.com", "techcrunch.com",
+  "technologyreview.com", "theinformation.com", "semianalysis.com",
+  "nist.gov", "europa.eu", "ai.gov",
+  # Primary research + government sources
+  "pewresearch.org", "pa.gov", "hai.stanford.edu", "gov.uk",
+  # Security trade press (the beat where AI incidents actually get reported)
+  "theregister.com", "darkreading.com", "thehackernews.com", "securityweek.com",
+  # General news desks with real reporting staff
+  "nbcnews.com", "cbsnews.com", "abcnews.go.com", "thehill.com", "forbes.com",
+  "whyy.org", "courthousenews.com",
+]
+
+# --------------------------------------------------------------- clustering
+# Deterministic topic discovery and cross-run dedup. Embeddings LABEL, they
+# never DROP — the editor keeps the kill decision.
+[cluster]
+min_cluster_size = 2
+similarity_threshold = 0.28       # TF-IDF cosine: same-story grouping
+repeat_threshold = 0.90           # vs prior weeks -> almost certainly a repeat
+developing_threshold = 0.62       # vs prior weeks -> continuing storyline
+
+# -------------------------------------------------------------------- gates
+# The evaluators run INLINE as publish gates, not just offline. A report that
+# passes every gate skips the LLM reviewer entirely.
+[gates]
+min_distinct_sources = 5
+min_reputable_ratio = 0.6
+max_hype_per_100w = 1.5
+min_groundedness = 0.85
+hype_terms = [
+  "game-changer", "game changer", "revolutionary", "unprecedented",
+  "seismic", "paradigm shift", "breakthrough", "explosive", "insane",
+  "mind-blowing", "supercharged", "disrupt", "skyrocket", "seismic shift",
+]
+sensitive_terms = [
+  "bioweapon", "chemical weapon", "nuclear", "cyberattack", "exploit",
+  "casualty", "lawsuit", "indictment", "layoffs", "surveillance",
+]

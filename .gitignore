@@ -1,0 +1,44 @@
+# ---------------------------------------------------------------- SECRETS
+# recipients.toml holds real email addresses. Publishing other people's
+# addresses to a public repo is the one mistake in this project that cannot be
+# undone — git history keeps them even after a later delete.
+recipients.toml
+.env
+*.env
+!recipients.example.toml
+
+# ---------------------------------------------------------------- GENERATED
+# Everything here is rebuilt by a run. The one exception is a published web
+# edition, if you choose to commit those for GitHub Pages — force-add it:
+#   git add -f output/edition-2026-08-23.html
+output/report.md
+output/report_draft.md
+output/reports/
+output/research/
+output/*.pdf
+output/*.html
+output/week-*.json
+
+# Cross-run memory: local state, not source.
+memory/coverage.md
+memory/last-run.json
+memory/centroids.json
+
+# ---------------------------------------------------------------- PYTHON
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# ---------------------------------------------------------------- OS / EDITOR
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

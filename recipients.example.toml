@@ -1,0 +1,37 @@
+# Copy to recipients.toml and fill in. NEVER put the SMTP password here.
+#
+# NOTE ON TOML: these three top-level keys must stay ABOVE the first [section]
+# header. Anything written after a [table] header belongs to that table, which
+# silently swallows them.
+
+web_url            = "https://example.github.io/thisweekinai/edition-{issued}.html"
+subject_template   = "This Week in AI — Edition {week}, {range}"
+unsubscribe_mailto = "you@example.com"
+
+[sender]
+name     = "This Week in AI"
+address  = "you@example.com"
+reply_to = "you@example.com"
+
+[smtp]
+# provider: gmail | outlook | office365 | yahoo | zoho | fastmail
+# or omit provider and set host + port yourself.
+provider     = "gmail"
+username     = "you@example.com"
+password_env = "NEWSROOM_SMTP_PASSWORD"   # export this; never written to a file
+
+[schedule]
+weekday  = "SUN"          # MON TUE WED THU FRI SAT SUN
+hour     = 8              # 24-hour clock
+minute   = 0
+timezone = "Asia/Kolkata"
+
+[[recipients]]
+name    = "First Reader"
+address = "reader1@example.com"
+active  = true
+
+[[recipients]]
+name    = "Second Reader"
+address = "reader2@example.com"
+active  = true

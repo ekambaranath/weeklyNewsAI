@@ -1,0 +1,401 @@
+{
+  "week": "34",
+  "range": "17 – 23 August 2026",
+  "issued": "2026-08-23",
+  "thread": "Four institutions hit the same wall this week, from four directions. A patched Copilot flaw turned an assistant's own memory into a persistent attack surface. OpenAI paused frontier training after its own capability threshold came back positive. Pennsylvania handed local communities a veto over data centres. And Pew put American concern about AI at its highest recorded level. The common factor is not capability — it is that the perimeter around capability is being built in public, late, and under pressure.",
+  "glance": [
+    {
+      "value": "8.8",
+      "unit": "CVSS",
+      "label": "Copilot flaw severity",
+      "note": "patched 18 Aug, 8 months after report"
+    },
+    {
+      "value": "33",
+      "unit": "%",
+      "label": "GPT-5.6 Sol output price cut",
+      "note": "$30 → $20 per M tokens"
+    },
+    {
+      "value": "52",
+      "unit": "%",
+      "label": "Americans more concerned than excited",
+      "note": "up from 37% in 2021"
+    },
+    {
+      "value": "20",
+      "unit": "%",
+      "label": "of OpenAI supervised inference compute",
+      "note": "now spent on safety monitoring"
+    }
+  ],
+  "categories": [
+    {
+      "key": "shipped",
+      "name": "Shipped",
+      "sub": "What changed for people building things",
+      "hue": "#1D5FAE",
+      "items": [
+        {
+          "headline": "GPT-5.6 Sol gets a 20/33 price cut",
+          "dek": "OpenAI's flagship tier drops to $4 input / $20 output per million tokens, billed as promotional.",
+          "fields": {
+            "What it is": "A rate change, not a new model. Standard input, cached input and cache-write rates fell ~20%; output fell 33.3%. OpenAI calls the $4/$20 short-context rate promotional, available at least through 21 November 2026.",
+            "The problem it solves": "Input vs output tokens is the whole story: output dominates the bill in agentic work — every tool call, plan and revision is generated text. A 33% output cut moves multi-step agent economics far more than a 20% input cut does.",
+            "What it changes": "Narrows the gap to mid-tier models for reasoning-heavy work. Terra ($2/$12) and Luna ($0.20/$1.20) are unchanged since the 30 July cut.",
+            "Should you act": "Re-run your routing thresholds. But the rate is explicitly promotional — don't bake it into a twelve-month budget."
+          },
+          "chart": {
+            "type": "delta",
+            "title": "GPT-5.6 Sol — USD per million tokens",
+            "rows": [
+              {
+                "label": "Input",
+                "before": 5.0,
+                "after": 4.0,
+                "fmt": "$%.2f",
+                "delta": "−20%"
+              },
+              {
+                "label": "Output",
+                "before": 30.0,
+                "after": 20.0,
+                "fmt": "$%.2f",
+                "delta": "−33.3%"
+              },
+              {
+                "label": "Cached input",
+                "before": 0.5,
+                "after": 0.4,
+                "fmt": "$%.2f",
+                "delta": "−20%"
+              }
+            ]
+          },
+          "confidence": "MEDIUM",
+          "confidence_note": "Sources disagree on the effective date; one tracker checked 21 Aug still listed $5/$30. Direction is solid, exact date unsettled — verify against OpenAI's live pricing page before budgeting.",
+          "sources": [
+            {
+              "outlet": "AI Pricing Guru",
+              "cls": "trade",
+              "url": "https://www.aipricing.guru/openai-pricing/"
+            },
+            {
+              "outlet": "Fello AI",
+              "cls": "trade",
+              "url": "https://felloai.com/chatgpt-pricing-guide-free-go-plus-pro-alternatives-october-2025/"
+            },
+            {
+              "outlet": "Morph (conflicting)",
+              "cls": "conflict",
+              "url": "https://www.morphllm.com/openai-api-pricing"
+            },
+            {
+              "outlet": "OpenAI pricing docs",
+              "cls": "vendor",
+              "url": "https://developers.openai.com/api/docs/pricing"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "security",
+      "name": "Security",
+      "sub": "Incidents, disclosures and the attack surface",
+      "hue": "#B3261E",
+      "items": [
+        {
+          "headline": "CoSnitch: Copilot's memory became the payload",
+          "dek": "A chain of three flaws let one crafted link exfiltrate connected accounts and write attacker instructions into permanent memory.",
+          "fields": {
+            "What it is": "CVE-2026-24301, rated 8.8 on the CVSS score, disclosed by Varonis Threat Labs against Microsoft Copilot Personal. Researchers obtained the attack path by asking Copilot about its own architecture.",
+            "The problem it exposes": "Three failures compound: auto-execution removes the click, existing OAuth access supplies the data, and web summarisation supplies a write path into permanent memory.",
+            "Why it generalises": "This is the lethal-trifecta shape — private data, untrusted content, exfiltration channel, one session. Nothing about it is Microsoft-specific.",
+            "Should you act": "Audit whether anything your agent summarises can reach its memory store. Most systems validate input and never validate memory writes."
+          },
+          "chart": {
+            "type": "chain",
+            "title": "The three-link chain",
+            "steps": [
+              {
+                "n": "1",
+                "t": "Auto-execute",
+                "d": "Undocumented URL parameter runs the attacker's prompt on page load — no click, no confirmation"
+              },
+              {
+                "n": "2",
+                "t": "Exfiltrate",
+                "d": "Injected prompt queries connected Gmail, Drive and Calendar, encodes results into a URL"
+              },
+              {
+                "n": "3",
+                "t": "Persist",
+                "d": "A summarised webpage writes instructions into permanent memory — survives password change, session revocation, device re-enrollment"
+              }
+            ]
+          },
+          "timeline": [
+            {
+              "d": "Dec 2025",
+              "t": "Varonis discloses to Microsoft"
+            },
+            {
+              "d": "Feb 2026",
+              "t": "Partial mitigation shipped"
+            },
+            {
+              "d": "18 Aug 2026",
+              "t": "Full patch and public CVE — 8 months after report"
+            }
+          ],
+          "confidence": "HIGH",
+          "confidence_note": "Four independent outlets plus the vendor advisory. Microsoft states enterprise M365 Copilot was unaffected; Varonis reports no exploitation in the wild.",
+          "sources": [
+            {
+              "outlet": "Dark Reading",
+              "cls": "independent",
+              "url": "https://www.darkreading.com/vulnerabilities-threats/cosnitch-attack-copilot-mapping-out-architecture"
+            },
+            {
+              "outlet": "The Hacker News",
+              "cls": "independent",
+              "url": "https://thehackernews.com/2026/08/microsoft-copilot-personal-flaws-could.html"
+            },
+            {
+              "outlet": "TechRadar Pro",
+              "cls": "independent",
+              "url": "https://www.techradar.com/pro/security/experts-manage-to-hack-microsoft-copilot-by-continually-asking-it-questions-about-itself"
+            },
+            {
+              "outlet": "Redmond Magazine",
+              "cls": "independent",
+              "url": "https://redmondmag.com/articles/2026/08/19/cosnitch-flaws-turned-microsoft-copilot-into-a-one-click-data-theft-tool.aspx"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "policy",
+      "name": "Policy",
+      "sub": "Regulation, and who gets to say no",
+      "hue": "#0F6B4F",
+      "items": [
+        {
+          "headline": "Pennsylvania gives towns a veto over AI data centres",
+          "dek": "Executive Order 2026-05 makes local approval a precondition for state environmental permits.",
+          "fields": {
+            "What it is": "Signed 18 August. Environmental permits may only be reviewed where the developer is legally bound to the state's GRID requirements and has local approval. Also strips AI data centres from Fast Track permitting and bars NDAs.",
+            "The problem it addresses": "Over 100 proposals were reportedly in play, many speculative. The order targets developers moving without local consent, and shifts electricity and water costs onto operators.",
+            "How far it goes": "Short of New York's moratorium. But local sign-off as a precondition may block many projects in practice — a procedural veto rather than a ban.",
+            "Why it travels": "A reversal by a governor who previously courted the industry, so it signals political cost, not one state's rule. Compute siting is becoming a local-consent problem, and consent sets build timelines."
+          },
+          "confidence": "HIGH",
+          "confidence_note": "Primary government source for the order's contents, plus independent reporting for the reversal framing.",
+          "sources": [
+            {
+              "outlet": "Commonwealth of Pennsylvania",
+              "cls": "primary",
+              "url": "https://www.pa.gov/governor/newsroom/2026-press-releases/governor-shapiro-signs-executive-order-on-data-center-developmen"
+            },
+            {
+              "outlet": "Philadelphia Inquirer",
+              "cls": "independent",
+              "url": "https://www.inquirer.com/politics/pennsylvania/josh-shapiro-data-center-order-20260818.html"
+            },
+            {
+              "outlet": "NBC News",
+              "cls": "independent",
+              "url": "https://www.nbcnews.com/politics/2028-election/gov-josh-shapiro-executive-order-data-centers-pennsylvania-rcna593177"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "lab",
+      "name": "Lab governance",
+      "sub": "What the frontier labs did to themselves",
+      "hue": "#5B3FA8",
+      "items": [
+        {
+          "headline": "OpenAI paused frontier RL after its own threshold fired",
+          "dek": "Preliminary evidence suggested an upcoming model, Astra, may meet the Critical cybersecurity threshold in its Preparedness Framework.",
+          "fields": {
+            "What it is": "OpenAI said it slowed scaling: a two-week pause on reinforcement learning for deployment-bound models, largest planned frontier run still on hold. It cited the Astra threshold finding and a separate Hugging Face incident.",
+            "The problem it addresses": "A capability threshold only means something if crossing one stops something. This is the first time a lab has named a model, a threshold and a halt rather than describing policy in the abstract.",
+            "The number that matters": "New multistage monitoring targets alerts within 30 minutes and consumes roughly 20% of supervised inference compute — a rare public figure for what monitoring costs at frontier scale.",
+            "Should you act": "Nothing operational. But if you're drafting an internal scaling policy, 20% is the most quotable cost anchor published so far."
+          },
+          "chart": {
+            "type": "gauge",
+            "title": "Supervised inference compute allocation",
+            "pct": 20,
+            "onlabel": "Safety monitoring",
+            "offlabel": "Inference work",
+            "foot": "Varies by workload. Company-reported figure."
+          },
+          "confidence": "MEDIUM",
+          "confidence_note": "The originating claim is a company post about its own safety process — a claim, not a verified fact. Trade press added specifics; no outlet independently confirmed the Astra finding.",
+          "sources": [
+            {
+              "outlet": "OpenAI",
+              "cls": "vendor",
+              "url": "https://openai.com/index/pacing-model-development-cyber-capabilities/"
+            },
+            {
+              "outlet": "The Decoder",
+              "cls": "trade",
+              "url": "https://the-decoder.com/openai-says-its-pacing-model-development-as-ai-cybersecurity-risks-grow-too-dangerous/"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "sentiment",
+      "name": "Sentiment",
+      "sub": "The number that constrains everything else",
+      "hue": "#8A6100",
+      "items": [
+        {
+          "headline": "Concern hits its recorded high, and the young lead it",
+          "dek": "Pew finds 52% of Americans more concerned than excited about AI; among 18-to-29s it is 55%.",
+          "fields": {
+            "What it is": "Pew surveyed 3,488 US adults, 22–28 June 2026. 52% are more concerned than excited about AI in daily life, against 37% in 2021. Only 9% are more excited than concerned.",
+            "What is driving it": "Employment. 71% expect fewer jobs over two decades, up from 64%. Among 18-to-29s concern has gone from 31% to 55% — the sharpest move in the series.",
+            "Why it is not just mood": "The same week, Axios reported a Republican Senate memo warning AI firms that data centres were hurting the party in an Ohio race. Sentiment is pricing into electoral calculation.",
+            "Should you act": "Read it next to the Pennsylvania order, not separately. Opinion is upstream; permitting regimes are downstream."
+          },
+          "chart": {
+            "type": "trend",
+            "title": "More concerned than excited about AI (%)",
+            "series": [
+              {
+                "label": "All US adults",
+                "points": [
+                  [
+                    2021,
+                    37
+                  ],
+                  [
+                    2026,
+                    52
+                  ]
+                ],
+                "hue": "#8A6100"
+              },
+              {
+                "label": "Adults 18–29",
+                "points": [
+                  [
+                    2021,
+                    31
+                  ],
+                  [
+                    2026,
+                    55
+                  ]
+                ],
+                "hue": "#B3261E"
+              }
+            ],
+            "foot": "Pew Research Center, n=3,488, fielded 22–28 June 2026."
+          },
+          "confidence": "HIGH",
+          "confidence_note": "Primary source with published methodology and panel documentation, cross-checked against three independent write-ups.",
+          "sources": [
+            {
+              "outlet": "Pew Research Center",
+              "cls": "primary",
+              "url": "https://www.pewresearch.org/short-reads/2026/08/18/young-adults-in-the-us-are-increasingly-wary-of-ai-concerned-it-will-take-jobs/"
+            },
+            {
+              "outlet": "SSRS (methodology)",
+              "cls": "primary",
+              "url": "https://ssrs.com/news/young-adults-concerned-about-ai/"
+            },
+            {
+              "outlet": "Courthouse News",
+              "cls": "independent",
+              "url": "https://www.courthousenews.com/pew-young-americans-grow-more-wary-of-ai-as-job-fears-rise/"
+            },
+            {
+              "outlet": "The Register",
+              "cls": "independent",
+              "url": "https://www.theregister.com/ai-and-ml/2026/08/19/more-than-half-of-americans-now-view-ai-negatively/5289736"
+            },
+            {
+              "outlet": "TechCrunch",
+              "cls": "independent",
+              "url": "https://techcrunch.com/2026/08/19/ai-was-supposed-to-win-people-over-by-now-it-hasnt/"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "dropped": [
+    {
+      "topic": "US pressure on allies to choose between US and Chinese AI stacks",
+      "reason": "Traced only to aggregator write-ups of a Reuters report. Could not reach the originating reporting, so the claim could not be verified at source.",
+      "verdict": "SKIP — unverified at origin"
+    },
+    {
+      "topic": "Codex CLI 0.149.0 agent dashboard",
+      "reason": "Single aggregator listing, no vendor changelog or independent coverage found. Plausible and probably true, but one source is not corroboration.",
+      "verdict": "SKIP — single source"
+    },
+    {
+      "topic": "\"OX Alpha\" anonymous reasoning model on OpenRouter",
+      "reason": "Anonymous provenance by construction. No attributable publisher, no model card, no verifiable benchmark methodology.",
+      "verdict": "SKIP — unattributable"
+    },
+    {
+      "topic": "Assorted August model-release roundups",
+      "reason": "Tracker sites disagreed on dates and on whether releases had shipped, been announced, or merely appeared as a price on a marketplace. Substance did not survive the disagreement.",
+      "verdict": "SKIP — sources conflict"
+    }
+  ],
+  "gates": [
+    {
+      "name": "source_count",
+      "score": "18",
+      "pass": true,
+      "detail": "18 distinct sources across 5 topics (floor: 5)"
+    },
+    {
+      "name": "source_quality",
+      "score": "0.72",
+      "pass": true,
+      "detail": "13/18 independent or primary (floor: 0.60)"
+    },
+    {
+      "name": "citation_integrity",
+      "score": "1.00",
+      "pass": true,
+      "detail": "every claim block resolves to a listed source"
+    },
+    {
+      "name": "groundedness",
+      "score": "1.00",
+      "pass": true,
+      "detail": "no factual assertion without an attached source"
+    },
+    {
+      "name": "voice",
+      "score": "0.00",
+      "pass": true,
+      "detail": "0 hype terms per 100 words (ceiling: 1.5)"
+    }
+  ],
+  "terms": [
+    "lethal-trifecta",
+    "prompt-injection",
+    "output-tokens",
+    "capability-threshold",
+    "cvss",
+    "rl"
+  ]
+}
