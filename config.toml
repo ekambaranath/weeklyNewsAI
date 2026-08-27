@@ -41,7 +41,7 @@ backend = "openrouter"            # "openrouter" (runs in CI) or "ollama" (local
 strong = "nvidia/nemotron-3.5-lightning:free"   # Tier 1  Managing Editor
 mid    = "nvidia/nemotron-3.5-lightning:free"   # Tier 2  Leads
 small  = "nvidia/nemotron-3.5-lightning:free"   # Tier 3  Workers
-max_tokens = 4096                               # room to emit full JSON (openrouter)
+max_tokens = 6000                               # room to emit full JSON (openrouter)
 
 # --- ollama tiers (used when backend = "ollama") ---
 ollama_strong = "qwen2.5:14b-instruct"   # Tier 1  Managing Editor

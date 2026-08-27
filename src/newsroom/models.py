@@ -66,6 +66,14 @@ def _build_openrouter(model_name: str, temperature: float) -> BaseChatModel:
             "your key (get a free one at https://openrouter.ai/keys) before "
             "running, or switch [models] backend back to \"ollama\" in config.toml."
         )
+    # Disable reasoning. Nemotron (and many free models) are reasoning models that
+    # otherwise spend their whole token budget on hidden chain-of-thought — which
+    # both blows the max_tokens limit before any JSON is emitted (LengthFinish/
+    # empty-content errors) AND makes every call take minutes on the free queue.
+    # This pipeline needs terse structured output, not deliberation, so we turn it
+    # off: calls then return JSON directly, in seconds. reasoning_effort="none" is
+    # the OpenAI-style knob; extra_body.reasoning.enabled=False is OpenRouter's,
+    # sent together so whichever the provider honours takes effect.
     return ChatOpenAI(
         model=model_name,
         base_url=_OPENROUTER_BASE,
@@ -73,6 +81,7 @@ def _build_openrouter(model_name: str, temperature: float) -> BaseChatModel:
         temperature=temperature,
         max_tokens=int(MODELS.get("max_tokens", 4096)),
         default_headers=_OPENROUTER_HEADERS,
+        extra_body={"reasoning": {"enabled": False}},
         timeout=180,
         max_retries=3,
     )
