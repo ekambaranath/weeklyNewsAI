@@ -71,6 +71,7 @@ def _build_openrouter(model_name: str, temperature: float) -> BaseChatModel:
         base_url=_OPENROUTER_BASE,
         api_key=key,
         temperature=temperature,
+        max_tokens=int(MODELS.get("max_tokens", 4096)),
         default_headers=_OPENROUTER_HEADERS,
         timeout=180,
         max_retries=3,
