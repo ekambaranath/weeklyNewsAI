@@ -47,6 +47,31 @@ def dry_run() -> int:
     return 0
 
 
+def model_check() -> int:
+    """Prove the model backend actually answers, and say why if it does not."""
+    from newsroom.config import MODELS
+    from newsroom.models import BACKEND, check
+
+    _banner("MODEL CHECK")
+    print(f"  backend: {BACKEND}")
+    print(f"  strong:  {MODELS.get('strong' if BACKEND == 'openrouter' else 'ollama_strong', MODELS['strong'])}")
+    ok, detail = check()
+    if ok:
+        print(f"\n  ✓ live call succeeded — reply: {detail!r}")
+        return 0
+    print(f"\n  ✗ live call FAILED\n  {detail}")
+    if BACKEND == "openrouter":
+        print(
+            "\n  Common causes on OpenRouter's free tier:\n"
+            "   • the key is wrong or was pasted with a trailing newline\n"
+            "   • the account's Privacy setting blocks free models — enable\n"
+            "     'Model training / prompt logging' at openrouter.ai/settings/privacy\n"
+            "   • the model id is unavailable; try another free model in config.toml\n"
+            "   • daily free-tier rate limit reached — wait, or add a small credit"
+        )
+    return 1
+
+
 def gates_only(path: str) -> int:
     report = Path(path).read_text(encoding="utf-8")
     passed, results = run_gates(report)
@@ -91,6 +116,12 @@ def full_run() -> int:
 
     if not report.strip():
         print("\nNo report produced. Nothing survived verification.")
+        from newsroom.models import LAST_ERROR
+
+        if LAST_ERROR:
+            print(f"\n  Last model error: {LAST_ERROR}")
+            print("  Every model call failed — this is a model/config problem, not a")
+            print("  quiet news week. Run:  python -m newsroom.run --check")
         print(state["budget"].report())
         return 1
 
@@ -170,8 +201,11 @@ def main() -> int:
     parser.add_argument("--dry-send", metavar="JSON", help="show who would receive it, send nothing")
     parser.add_argument("--cron", action="store_true", help="print the crontab line for the schedule")
     parser.add_argument("--preflight", action="store_true", help="check no addresses can reach the repo")
+    parser.add_argument("--check", action="store_true", help="make one live model call and report the result")
     args = parser.parse_args()
 
+    if args.check:
+        return model_check()
     if args.dry_run:
         return dry_run()
     if args.gates_only:
