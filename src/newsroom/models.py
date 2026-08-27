@@ -127,6 +127,36 @@ def _note_error(where: str, exc: Exception) -> None:
         print(f"  [llm-error] {LAST_ERROR}", file=sys.stderr, flush=True)
 
 
+def list_free_models(substr: str = "") -> list[str]:
+    """Free model ids currently served by OpenRouter, optionally filtered.
+
+    Hits the public models endpoint (no key required). Used by ``--check`` to
+    name a valid replacement slug when the configured one 404s, so a slug that
+    OpenRouter has renamed or retired can be fixed without guessing.
+    """
+    import urllib.request
+
+    try:
+        req = urllib.request.Request(
+            f"{_OPENROUTER_BASE}/models", headers={"Accept": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.load(resp)
+    except Exception as exc:
+        return [f"(could not list models: {type(exc).__name__}: {exc})"]
+
+    out = []
+    for m in data.get("data", []):
+        mid = m.get("id", "")
+        pr = m.get("pricing", {}) or {}
+        free = str(pr.get("prompt", "1")) in ("0", "0.0") and str(
+            pr.get("completion", "1")
+        ) in ("0", "0.0")
+        if free and (not substr or substr.lower() in mid.lower()):
+            out.append(mid)
+    return sorted(out)
+
+
 def check() -> tuple[bool, str]:
     """One live round-trip on the strong tier. Returns (ok, detail).
 

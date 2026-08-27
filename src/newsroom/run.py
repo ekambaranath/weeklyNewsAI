@@ -69,6 +69,20 @@ def model_check() -> int:
             "   • the model id is unavailable; try another free model in config.toml\n"
             "   • daily free-tier rate limit reached — wait, or add a small credit"
         )
+        from newsroom.models import list_free_models
+
+        print("\n  Free NVIDIA / Nemotron models OpenRouter serves right now:")
+        nvidia = [m for m in list_free_models("nemotron")] + [
+            m for m in list_free_models("nvidia/") if "nemotron" not in m.lower()
+        ]
+        for m in nvidia or ["   (none found matching nvidia/nemotron)"]:
+            print(f"     {m}")
+        others = [m for m in list_free_models() if "nvidia" not in m.lower()][:12]
+        if others:
+            print("\n  Other free models available (sample):")
+            for m in others:
+                print(f"     {m}")
+        print("\n  Put a valid slug in config.toml [models] strong/mid/small.")
     return 1
 
 
