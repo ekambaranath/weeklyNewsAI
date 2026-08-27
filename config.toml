@@ -33,9 +33,9 @@ backend = "openrouter"            # "openrouter" (runs in CI) or "ollama" (local
 # `python -m newsroom.run --check` prints the exact error AND OpenRouter's
 # suggested replacement slug; swap the slug below for any current free model
 # (browse https://openrouter.ai/models?max_price=0).
-strong = "nvidia/nemotron-nano-9b-v2:free"   # Tier 1  Managing Editor
-mid    = "nvidia/nemotron-nano-9b-v2:free"   # Tier 2  Leads
-small  = "nvidia/nemotron-nano-9b-v2:free"   # Tier 3  Workers
+strong = "nvidia/nemotron-3-ultra-550b-a55b:free"   # Tier 1  Managing Editor
+mid    = "nvidia/nemotron-3-ultra-550b-a55b:free"   # Tier 2  Leads
+small  = "nvidia/nemotron-3-ultra-550b-a55b:free"   # Tier 3  Workers
 
 # --- ollama tiers (used when backend = "ollama") ---
 ollama_strong = "qwen2.5:14b-instruct"   # Tier 1  Managing Editor
