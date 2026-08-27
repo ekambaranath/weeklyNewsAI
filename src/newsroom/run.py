@@ -124,33 +124,27 @@ def full_run() -> int:
             result = chunk
 
     report = result.get("report", "")
+    briefs = [b for b in result.get("briefs", []) if getattr(b, "claims", None)]
+    plan = result.get("plan")
 
     for warning in result.get("warnings", []) or []:
         print(f"  ⚠ {warning}")
 
-    if not report.strip():
-        print("\nNo report produced. Nothing survived verification.")
-        from newsroom.models import LAST_ERROR
-
-        if LAST_ERROR:
-            print(f"\n  Last model error: {LAST_ERROR}")
-            print("  Every model call failed — this is a model/config problem, not a")
-            print("  quiet news week. Run:  python -m newsroom.run --check")
-        print(state["budget"].report())
-        return 1
-
-    _banner("QUALITY GATES")
-    print(format_gates(result.get("gate_results", [])))
-
+    # The edition JSON — not the markdown — is what every deliverable consumes, and
+    # it is composed from the verified BRIEFS, independent of the markdown synthesis
+    # call. So a flaky synthesis (a transient upstream 502, say) must not lose the
+    # run: as long as briefs survived, we can still build and ship an edition.
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     latest = OUTPUT_DIR / "report.md"
     archived = REPORTS_DIR / f"{run_date}.md"
-    latest.write_text(report, encoding="utf-8")
-    archived.write_text(report, encoding="utf-8")
-
-    briefs = result.get("briefs", [])
-    plan = result.get("plan")
+    if report.strip():
+        latest.write_text(report, encoding="utf-8")
+        archived.write_text(report, encoding="utf-8")
+        _banner("QUALITY GATES")
+        print(format_gates(result.get("gate_results", [])))
+    else:
+        print("  ⚠ markdown synthesis produced nothing; building edition from briefs")
 
     # Compose the edition JSON that every deliverable consumes. The markdown is
     # the intermediate artifact; this document, and the PDF rendered from it, are
@@ -158,22 +152,37 @@ def full_run() -> int:
     from newsroom.edition import build_edition, write_edition
 
     run_json = OUTPUT_DIR / f"week-{run_date}.json"
-    try:
-        edition = build_edition(
-            briefs,
-            plan,
-            result.get("reports", []),
-            result.get("gate_results", []),
-            run_date,
-            state["budget"],
-            thread_fallback=report.split("\n\n", 2)[1] if "\n\n" in report else "",
-        )
-        run_json = write_edition(edition, run_date)
-        signals = sum(len(c["items"]) for c in edition["categories"])
-        print(f"\n  Edition:    {run_json}  ({signals} signals, "
-              f"{len(edition['categories'])} desks)")
-    except Exception as exc:  # composing must never lose a completed run
-        print(f"  \u26a0 Edition compose failed ({exc}); markdown retained")
+    edition = None
+    if briefs:
+        try:
+            edition = build_edition(
+                briefs,
+                plan,
+                result.get("reports", []),
+                result.get("gate_results", []),
+                run_date,
+                state["budget"],
+                thread_fallback=report.split("\n\n", 2)[1] if "\n\n" in report else "",
+            )
+            run_json = write_edition(edition, run_date)
+            signals = sum(len(c["items"]) for c in edition["categories"])
+            print(f"\n  Edition:    {run_json}  ({signals} signals, "
+                  f"{len(edition['categories'])} desks)")
+        except Exception as exc:  # composing must never lose a completed run
+            print(f"  \u26a0 Edition compose failed ({exc})")
+
+    # Fail only when there is genuinely nothing to ship. Name the real cause so an
+    # overloaded free endpoint or a bad model id is distinguishable from quiet news.
+    if edition is None or not edition.get("categories"):
+        print("\nNo edition produced \u2014 nothing survived verification.")
+        from newsroom.models import LAST_ERROR
+
+        if LAST_ERROR:
+            print(f"\n  Last model error: {LAST_ERROR}")
+            print("  A 5xx / 'overloaded' error means the free model was busy \u2014 retry.")
+            print("  Otherwise run:  python -m newsroom.run --check")
+        print(state["budget"].report())
+        return 1
 
     # The PDF briefing is the email attachment, so render it from the fresh JSON.
     pdf_path = None
