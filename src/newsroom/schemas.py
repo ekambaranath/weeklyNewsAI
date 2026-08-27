@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 Status = Literal["NEW", "DEVELOPING", "REPEAT"]
 Verdict = Literal["KEEP", "SKIP"]
@@ -99,7 +99,25 @@ class ResearchAllocation(BaseModel):
 
 class Claim(BaseModel):
     text: str = Field(description="One factual sentence")
-    source_url: str = Field(description="The URL that substantiates this exact claim")
+    source_url: str = Field(default="", description="The URL that substantiates this exact claim")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_aliases(cls, data):
+        """Accept the field-name variants real models emit for a claim.
+
+        Models return the claim text under 'text', 'claim', 'claim_text' or
+        'statement', and the URL under 'source_url', 'url', 'source' or 'link'.
+        Normalise them so one worded-differently reply doesn't cost a topic.
+        """
+        if not isinstance(data, dict):
+            return data
+        text = data.get("text") or data.get("claim") or data.get("claim_text") or data.get("statement")
+        url = (
+            data.get("source_url") or data.get("url") or data.get("source")
+            or data.get("link") or data.get("citation")
+        )
+        return {"text": text or "", "source_url": url or ""}
 
 
 class Brief(BaseModel):
@@ -112,14 +130,62 @@ class Brief(BaseModel):
     claims: list[Claim] = Field(default_factory=list)
     round: int = 0
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_claims(cls, data):
+        """Accept the two claim shapes models actually emit.
+
+        The schema wants ``claims: [{text, source_url}, ...]``, but models often
+        return two PARALLEL arrays instead — ``{"claims": ["...", "..."],
+        "sources": ["url", "url"]}`` — pairing claim i with source i. Zip them
+        back together rather than failing the whole brief (which drops the
+        topic). Claim's own validator then handles per-item key variants.
+        """
+        if not isinstance(data, dict):
+            return data
+        claims = data.get("claims")
+        if not isinstance(claims, list) or not claims:
+            return data
+        sources = data.get("sources") or data.get("urls") or data.get("citations") or []
+        if not isinstance(sources, list):
+            sources = []
+        paired = []
+        for i, c in enumerate(claims):
+            if isinstance(c, str):
+                url = sources[i] if i < len(sources) else ""
+                paired.append({"text": c, "source_url": url})
+            elif isinstance(c, dict):
+                if not any(k in c for k in ("source_url", "url", "source", "link", "citation")) and i < len(sources):
+                    c = {**c, "source_url": sources[i]}
+                paired.append(c)
+        return {**data, "claims": paired}
+
 
 # ------------------------------------------------ Tier 3: verifier / Tier 2 lead
 
 
 class ClaimCheck(BaseModel):
-    claim_text: str
-    result: CheckResult
+    claim_text: str = ""
+    result: CheckResult = "PASS"
     note: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_aliases(cls, data):
+        """Models phrase a verdict as result/verdict/status and PASS/FAIL/FLAG.
+
+        Map them onto the schema (verify_topic re-attaches claim_text after), so a
+        differently-worded verdict is read rather than discarded.
+        """
+        if not isinstance(data, dict):
+            return data
+        raw = str(
+            data.get("result") or data.get("verdict") or data.get("status") or "PASS"
+        ).upper()
+        result = "FLAG" if raw in ("FLAG", "FAIL", "FALSE", "NO", "UNSUPPORTED") else "PASS"
+        note = data.get("note") or data.get("reason") or data.get("explanation") or ""
+        text = data.get("claim_text") or data.get("claim") or data.get("text") or ""
+        return {"claim_text": text, "result": result, "note": note}
 
 
 class VerificationReport(BaseModel):
