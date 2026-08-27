@@ -1,7 +1,17 @@
 # This Week in AI
 
-A weekly AI newspaper, assembled and delivered by a hierarchy of agents running
-entirely on local models and open feeds. **No API keys. No credits. $0.00 per run.**
+A weekly AI newspaper, assembled and delivered by a hierarchy of agents. Every
+edition is **regenerated from that week's live feeds** and mailed to its
+recipients — no static copy, no hand-editing. It runs two ways, both free:
+
+- **Local** — three Ollama models. No API keys, no credits, `$0.00 per run`.
+- **Hosted** — the same tiers on OpenRouter's free tier. This is what lets the
+  edition **rebuild itself unattended in GitHub Actions**, which has no GPU to
+  host Ollama. One free key (`$OPENROUTER_API_KEY`), still `$0.00` — rate-limited
+  rather than billed.
+
+Flip between them with a single line in `config.toml` (`[models] backend`);
+nothing else changes.
 
 ## Three editions, one source
 
@@ -66,31 +76,69 @@ functions, so the managers manage instead of clerk.
 ## Setup
 
 ```bash
-# 1. Install Ollama, then pull the three tiers (once)
+pip install -e .
+```
+
+Then pick a backend in `config.toml` under `[models]`:
+
+**Hosted (default — runs in CI):**
+```toml
+[models]
+backend = "openrouter"
+```
+```bash
+export OPENROUTER_API_KEY=sk-or-...     # free key: https://openrouter.ai/keys
+```
+
+**Local ($0, no key):**
+```toml
+[models]
+backend = "ollama"
+```
+```bash
 ollama pull qwen2.5:14b-instruct     # Tier 1 editor
 ollama pull qwen2.5:7b-instruct      # Tier 2 leads
 ollama pull llama3.2:3b              # Tier 3 workers
-
-# 2. Install
-pip install -e .
 ```
 
 Smaller machine? Drop each tier one notch in `config.toml` — the graph does not
 care which models sit behind the tiers.
 
+### Weekly automation (GitHub Actions)
+
+`.github/workflows/weekly-send.yml` regenerates and mails the edition every
+Monday. Add three repository secrets (Settings → Secrets and variables →
+Actions):
+
+| Secret | What it is |
+|---|---|
+| `OPENROUTER_API_KEY` | your free OpenRouter key — the models the pipeline runs on |
+| `RECIPIENTS_TOML` | the full contents of your `recipients.toml` (kept out of git) |
+| `NEWSROOM_SMTP_PASSWORD` | the sending mailbox's app password |
+
+Trigger it by hand first (Actions → *Weekly edition* → Run workflow) with
+**dry_run** left on: it builds the edition and lists who *would* receive it
+without sending. Turn dry_run off, or wait for Monday, to send for real.
+
 ## Run
 
 ```bash
 python -m newsroom.run --dry-run              # deterministic half only, no model
-python -m newsroom.run                        # full run
+python -m newsroom.run                        # full run: harvest → compose → PDF
+python -m newsroom.run --send output/week-<date>.json   # mail the built edition
 python -m newsroom.run --gates-only report.md # score an existing report
 ```
 
 **Start with `--dry-run`.** It exercises harvesting, filtering, clustering and
 continuity labelling without loading a model, in seconds. Most bugs live there.
 
-Output lands in `output/report.md`, a dated copy in `output/reports/`, evidence
-in `output/research/<topic>/evidence.jsonl`, and memory in `memory/`.
+A full run harvests the week's feeds, researches and verifies each topic, and
+**composes `output/week-<date>.json`** — the edition every deliverable is built
+from — then renders the PDF briefing. It also writes `output/report.md`, a dated
+copy in `output/reports/`, evidence in `output/research/<topic>/evidence.jsonl`,
+and memory in `memory/`. The edition JSON is assembled in `edition.py`: the
+editor writes the copy, but sources, confidence grades, gate scores and the
+glance numbers are computed from the verified briefs, never invented.
 
 ---
 
@@ -98,7 +146,7 @@ in `output/research/<topic>/evidence.jsonl`, and memory in `memory/`.
 
 | Resource | Cost |
 |---|---|
-| Inference | $0.00 — local Ollama |
+| Inference | $0.00 — local Ollama, or OpenRouter's free tier (rate-limited) |
 | Search / discovery | $0.00 — RSS, arXiv, HN Algolia (all keyless) |
 | Storage | local disk |
 
@@ -118,9 +166,11 @@ Verified working:
 
 ## Roadmap
 
+- [x] Self-regenerating weekly edition (composed from live feeds, not a sample)
+- [x] Hosted backend (OpenRouter) so the pipeline runs unattended in CI
+- [x] `cron` scheduling — GitHub Actions, Mondays 15:00 IST
 - [ ] Frozen golden dataset + planted-defect regression suite (the gates are
       already written as pure functions, so this is mostly harness)
 - [ ] Structured trajectory logging to JSONL (local LangSmith substitute)
-- [ ] Optional hybrid mode: local workers, paid API editor for the synthesis step
+- [ ] Curated glossary term selection for auto-composed editions
 - [ ] Daily cadence (needs a rolling 30-day memory window, not per-run centroids)
-- [ ] `cron` scheduling

@@ -167,6 +167,73 @@ def editor_synthesise(
     )
 
 
+EDITOR_COMPOSE_SYSTEM = """You are the Managing Editor turning verified research
+into the finished edition of a weekly AI digest.
+
+You are given, per topic, a set of already-verified claims — each with the exact
+URL that substantiates it. Write the reader-facing copy for each as a story card.
+
+Return ONE JSON object: {"thread": ..., "stories": [ ... ]}.
+
+thread — one paragraph (2-4 sentences) naming the single thread that connects
+this week's stories. Concrete, not a mission statement.
+
+For each story, fill these fields, grounded ONLY in that topic's verified claims:
+  section        — one of: shipped (models, pricing, releases), security,
+                   governance (policy, safety, labs), research (papers, results),
+                   business (funding, deals, market). Pick the best single fit.
+  headline       — specific and factual, at most 12 words, NO hype vocabulary
+                   (no "game-changer", "revolutionary", "breakthrough").
+  dek            — one sentence expanding the headline.
+  what_it_is     — what actually happened, plainly.
+  what_it_solves — why it matters / the problem it addresses.
+  what_it_changes— what is concretely different now for someone building with AI.
+  should_you_act — ONE plain, concrete "so what" line. If there is genuinely no
+                   action, say what to watch instead — never manufacture urgency.
+  confidence_note— one line on how solid the sourcing is (e.g. what a reader
+                   should double-check).
+
+RULES: invent nothing beyond the verified claims. Give numbers with their unit
+("33% lower output price", not "much cheaper"). Keep every field to 1-2 plain
+sentences. Cover every topic you are given, in the order given."""
+
+
+def editor_compose(
+    briefs: list[Brief], plan: EditorialPlan, run_date: str, budget: Budget
+):
+    """Tier 1, call 3. Compose the reader-facing edition copy from verified briefs.
+
+    Returns an ``EditionCopy`` or ``None``. The caller (edition.py) supplies all
+    factual structure — sources, confidence, gates, glance numbers — so a ``None``
+    here degrades to a plain deterministic edition rather than losing the run.
+    """
+    from newsroom.schemas import EditionCopy
+
+    status_of = {d.cluster_id: d.status for d in plan.decisions}
+    payload = [
+        {
+            "cluster_id": b.cluster_id,
+            "topic": b.topic,
+            "status": status_of.get(b.cluster_id, "NEW"),
+            "verified_claims": [{"claim": c.text, "url": c.source_url} for c in b.claims],
+        }
+        for b in briefs
+    ]
+    user = (
+        f"Date: {run_date}\n"
+        f"Editorial throughline: {plan.throughline or '(none identified)'}\n\n"
+        f"Verified material (one block per topic):\n{json.dumps(payload, indent=2)}"
+    )
+    return structured(
+        llm_strong,
+        EditionCopy,
+        EDITOR_COMPOSE_SYSTEM,
+        user,
+        budget=budget,
+        label="editor.compose",
+    )
+
+
 def editor_revise(report: str, issues: list[str], budget: Budget) -> str:
     """Tier 1, conditional. Fix concrete problems without re-researching."""
     user = (
