@@ -16,7 +16,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from newsroom import cluster as clustering, harvest, memory
+from newsroom import cluster as clustering
+from newsroom import harvest, memory
 from newsroom.config import OUTPUT_DIR, QUARANTINE_DIR, REPORTS_DIR
 from newsroom.gates import format_gates, run_gates
 
@@ -62,17 +63,27 @@ def full_run() -> int:
     graph = build_graph()
     state = initial_state(run_date)
 
+    from newsroom.models import BACKEND
+
     _banner(f"NEWSROOM — {run_date}")
     print("  Tier 0 orchestrator: deterministic")
-    print("  Tier 1-3 agents:     local (Ollama), $0.00 API cost\n")
+    if BACKEND == "openrouter":
+        print("  Tier 1-3 agents:     OpenRouter (hosted), free tier\n")
+    else:
+        print("  Tier 1-3 agents:     local (Ollama), $0.00 API cost\n")
 
-    final: dict = {}
-    for chunk in graph.stream(state, stream_mode="updates"):
-        for node, update in chunk.items():
-            final.update({k: v for k, v in (update or {}).items()})
-            print(f"  → {node}", flush=True)
+    # Stream both modes: "updates" for per-node progress, "values" for the full
+    # merged state after each step. The last "values" snapshot is authoritative —
+    # unlike accumulating "updates" deltas, it has the reducer-merged briefs and
+    # reports the edition compose step depends on.
+    result: dict = {}
+    for mode, chunk in graph.stream(state, stream_mode=["updates", "values"]):
+        if mode == "updates":
+            for node in chunk or {}:
+                print(f"  → {node}", flush=True)
+        elif chunk:
+            result = chunk
 
-    result = graph.invoke(state) if not final else final
     report = result.get("report", "")
 
     for warning in result.get("warnings", []) or []:
@@ -93,9 +104,34 @@ def full_run() -> int:
     latest.write_text(report, encoding="utf-8")
     archived.write_text(report, encoding="utf-8")
 
-    # Markdown is the intermediate artifact; the PDF briefing is the deliverable.
-    pdf_path = None
+    briefs = result.get("briefs", [])
+    plan = result.get("plan")
+
+    # Compose the edition JSON that every deliverable consumes. The markdown is
+    # the intermediate artifact; this document, and the PDF rendered from it, are
+    # what actually ships. Built from THIS run's verified briefs, so it is fresh.
+    from newsroom.edition import build_edition, write_edition
+
     run_json = OUTPUT_DIR / f"week-{run_date}.json"
+    try:
+        edition = build_edition(
+            briefs,
+            plan,
+            result.get("reports", []),
+            result.get("gate_results", []),
+            run_date,
+            state["budget"],
+            thread_fallback=report.split("\n\n", 2)[1] if "\n\n" in report else "",
+        )
+        run_json = write_edition(edition, run_date)
+        signals = sum(len(c["items"]) for c in edition["categories"])
+        print(f"\n  Edition:    {run_json}  ({signals} signals, "
+              f"{len(edition['categories'])} desks)")
+    except Exception as exc:  # composing must never lose a completed run
+        print(f"  \u26a0 Edition compose failed ({exc}); markdown retained")
+
+    # The PDF briefing is the email attachment, so render it from the fresh JSON.
+    pdf_path = None
     if run_json.is_file():
         try:
             from newsroom.render import render_pdf
@@ -104,8 +140,6 @@ def full_run() -> int:
         except Exception as exc:  # rendering must never lose a completed run
             print(f"  \u26a0 PDF render failed ({exc}); markdown retained")
 
-    briefs = result.get("briefs", [])
-    plan = result.get("plan")
     if briefs and plan:
         memory.write(briefs, plan, run_date)
         clusters = result.get("clusters", [])

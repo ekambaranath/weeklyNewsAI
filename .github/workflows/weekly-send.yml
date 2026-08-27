@@ -1,21 +1,26 @@
-name: Weekly send
+name: Weekly edition
 
 # 15:00 Asia/Kolkata = 09:30 UTC. GitHub cron is UTC-only and India has no DST,
 # so this stays correct year-round.
+#
+# Each run REGENERATES the edition from that week's live feeds — it no longer
+# re-mails a committed sample. Inference runs on OpenRouter's free tier (GitHub
+# Actions has no GPU to host Ollama); the key lives in the OPENROUTER_API_KEY
+# secret and is never written to disk.
 on:
   schedule:
     - cron: "30 9 * * 1"      # Mondays, 09:30 UTC = 15:00 IST
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "List recipients without sending"
+        description: "Build the edition but list recipients instead of sending"
         type: boolean
         default: true
 
 jobs:
   send:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +36,17 @@ jobs:
           pip install playwright pypdfium2
           python -m playwright install --with-deps chromium
 
+      - name: Preflight — key present
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::error::OPENROUTER_API_KEY secret is not set. Add it under"
+            echo "::error::Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "OpenRouter key present."
+
       - name: Restore recipients from secret
         env:
           RECIPIENTS_TOML: ${{ secrets.RECIPIENTS_TOML }}
@@ -45,19 +61,33 @@ jobs:
       - name: Privacy preflight
         run: python -m newsroom.run --preflight
 
-      - name: Pick the latest edition
+      - name: Build this week's edition (harvest → verify → compose → PDF)
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: python -m newsroom.run
+
+      - name: Locate the generated edition
         id: pick
         run: |
-          RUN_JSON=$(ls -1 samples/week-*.json 2>/dev/null | sort | tail -n1)
+          RUN_JSON=$(ls -1 output/week-*.json 2>/dev/null | sort | tail -n1)
           if [ -z "$RUN_JSON" ]; then
-            echo "::error::No samples/week-*.json found. Commit an edition first."
+            echo "::error::No output/week-*.json produced — nothing survived verification."
             exit 1
           fi
           echo "run_json=$RUN_JSON" >> "$GITHUB_OUTPUT"
           echo "Edition: $RUN_JSON"
 
-      - name: Render the print PDF
-        run: python -m newsroom.run --pdf "${{ steps.pick.outputs.run_json }}"
+      - name: Upload edition artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-edition
+          path: |
+            output/week-*.json
+            output/briefing-*.pdf
+            output/briefing-*.html
+            output/report.md
+          if-no-files-found: ignore
 
       - name: Send
         env:

@@ -5,17 +5,41 @@
 # and all discovery is via open RSS/Atom feeds + keyless search.
 
 # ---------------------------------------------------------------- model tiers
-# Three tiers, mapped to the agent hierarchy. Pull them once with:
-#   ollama pull qwen2.5:14b-instruct
-#   ollama pull qwen2.5:7b-instruct
-#   ollama pull llama3.2:3b
-# Smaller machine? Drop each tier one notch; the graph does not care.
+# Three tiers, mapped to the agent hierarchy. Two backends serve them:
+#
+#   backend = "ollama"      local, $0.00, no key. Pull the models once:
+#                             ollama pull qwen2.5:14b-instruct
+#                             ollama pull qwen2.5:7b-instruct
+#                             ollama pull llama3.2:3b
+#                           Smaller machine? Drop each tier one notch.
+#
+#   backend = "openrouter"  the same tiers, served by OpenRouter's OpenAI-
+#                           compatible API. This is what lets the weekly edition
+#                           regenerate itself in GitHub Actions, which has no GPU
+#                           to host Ollama. The key is read from the environment
+#                           ($OPENROUTER_API_KEY) and is never stored in a file.
+#                           The models below are OpenRouter's free tier — $0.00,
+#                           rate-limited rather than billed.
+#
+# Switching backend changes nothing above models.py: the graph, the agents and
+# the budget see the same three tiers either way.
 [models]
-strong = "qwen2.5:14b-instruct"   # Tier 1  Managing Editor  (judgement, synthesis)
-mid    = "qwen2.5:7b-instruct"    # Tier 2  Leads            (allocation, adjudication)
-small  = "llama3.2:3b"            # Tier 3  Workers          (bounded, high-volume)
-host   = "http://localhost:11434"
-num_ctx = 8192
+backend = "openrouter"            # "openrouter" (runs in CI) or "ollama" (local)
+
+# --- openrouter tiers (used when backend = "openrouter") ---
+# DeepSeek V3 is the strongest free model with dependable JSON adherence, so it
+# drives every tier here; the budget still caps total calls per run.
+strong = "deepseek/deepseek-chat-v3-0324:free"   # Tier 1  Managing Editor
+mid    = "deepseek/deepseek-chat-v3-0324:free"   # Tier 2  Leads
+small  = "deepseek/deepseek-chat-v3-0324:free"   # Tier 3  Workers
+
+# --- ollama tiers (used when backend = "ollama") ---
+ollama_strong = "qwen2.5:14b-instruct"   # Tier 1  Managing Editor
+ollama_mid    = "qwen2.5:7b-instruct"     # Tier 2  Leads
+ollama_small  = "llama3.2:3b"             # Tier 3  Workers
+
+host   = "http://localhost:11434"         # ollama only
+num_ctx = 8192                            # ollama only
 temperature_strong = 0.4
 temperature_mid = 0.2
 temperature_small = 0.1

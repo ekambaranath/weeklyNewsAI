@@ -148,3 +148,36 @@ class MemoryEntry(BaseModel):
     status: Status
     synopsis: str
     sources: list[str] = Field(default_factory=list)
+
+
+# ------------------------------------------------ Tier 1: edition composition
+
+# The editor writes only the judgement half of a story card. Everything factual
+# — sources, their trust class, confidence, the gate scores, the four glance
+# numbers — is computed from the verified briefs in edition.py, never invented
+# here. That keeps the evidence chain of custody out of the model.
+
+Section = Literal["shipped", "security", "governance", "research", "business"]
+
+
+class StoryCopy(BaseModel):
+    """The editorial copy for one story card, grounded in its verified claims."""
+
+    cluster_id: str
+    section: Section = Field(description="Which desk this story belongs to")
+    headline: str = Field(description="Specific, factual, no hype. <= 12 words.")
+    dek: str = Field(description="One sentence expanding the headline.")
+    what_it_is: str = Field(description="What actually happened, plainly.")
+    what_it_solves: str = Field(description="Why it matters / the problem it addresses.")
+    what_it_changes: str = Field(description="What is different now for a builder.")
+    should_you_act: str = Field(description="The one concrete 'so what' line.")
+    confidence_note: str = Field(
+        default="", description="One line on how solid the sourcing is."
+    )
+
+
+class EditionCopy(BaseModel):
+    """The Managing Editor's finished copy for the whole edition."""
+
+    thread: str = Field(description="One paragraph: the thread connecting the stories.")
+    stories: list[StoryCopy] = Field(default_factory=list)
