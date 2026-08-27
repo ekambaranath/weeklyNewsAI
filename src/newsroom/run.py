@@ -116,19 +116,32 @@ def full_run() -> int:
     # unlike accumulating "updates" deltas, it has the reducer-merged briefs and
     # reports the edition compose step depends on.
     result: dict = {}
+    best_briefs: list = []  # richest briefs-with-claims seen in ANY snapshot
     for mode, chunk in graph.stream(state, stream_mode=["updates", "values"]):
         if mode == "updates":
             for node in chunk or {}:
                 print(f"  → {node}", flush=True)
         elif chunk:
             result = chunk
+            snap = [b for b in chunk.get("briefs", []) if getattr(b, "claims", None)]
+            # Verification/pruning can thin briefs late; keep the fullest set we saw
+            # so a strict late gate can't erase an otherwise shippable edition.
+            if len(snap) > len(best_briefs):
+                best_briefs = snap
 
     report = result.get("report", "")
-    briefs = [b for b in result.get("briefs", []) if getattr(b, "claims", None)]
+    all_briefs = result.get("briefs", [])
+    briefs = best_briefs or [b for b in all_briefs if getattr(b, "claims", None)]
     plan = result.get("plan")
 
     for warning in result.get("warnings", []) or []:
         print(f"  ⚠ {warning}")
+
+    print(
+        f"  [diag] state keys={sorted(result)} | briefs={len(all_briefs)} "
+        f"with_claims={len(briefs)} "
+        f"claimcounts={[len(getattr(b, 'claims', [])) for b in all_briefs]}"
+    )
 
     # The edition JSON — not the markdown — is what every deliverable consumes, and
     # it is composed from the verified BRIEFS, independent of the markdown synthesis
