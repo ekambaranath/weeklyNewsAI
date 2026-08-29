@@ -66,12 +66,22 @@ def _build_openrouter(model_name: str, temperature: float) -> BaseChatModel:
             "your key (get a free one at https://openrouter.ai/keys) before "
             "running, or switch [models] backend back to \"ollama\" in config.toml."
         )
+    # Disable reasoning. Nemotron (and many free models) are reasoning models that
+    # otherwise spend their whole token budget on hidden chain-of-thought — which
+    # both blows the max_tokens limit before any JSON is emitted (LengthFinish/
+    # empty-content errors) AND makes every call take minutes on the free queue.
+    # This pipeline needs terse structured output, not deliberation, so we turn it
+    # off: calls then return JSON directly, in seconds. reasoning_effort="none" is
+    # the OpenAI-style knob; extra_body.reasoning.enabled=False is OpenRouter's,
+    # sent together so whichever the provider honours takes effect.
     return ChatOpenAI(
         model=model_name,
         base_url=_OPENROUTER_BASE,
         api_key=key,
         temperature=temperature,
+        max_tokens=int(MODELS.get("max_tokens", 4096)),
         default_headers=_OPENROUTER_HEADERS,
+        extra_body={"reasoning": {"enabled": False}},
         timeout=180,
         max_retries=3,
     )
@@ -109,6 +119,72 @@ llm_small = _build("small", MODELS["temperature_small"])
 
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
+
+# Transport/runtime errors are swallowed so one bad reply costs one topic, not
+# the run — but a run where EVERY call fails then looks identical to a run where
+# the models simply had nothing to say. So the last error is kept here, and
+# printed immediately when NEWSROOM_DEBUG is set, to make that difference visible.
+LAST_ERROR: str = ""
+_DEBUG = bool(os.environ.get("NEWSROOM_DEBUG"))
+
+
+def _note_error(where: str, exc: Exception) -> None:
+    global LAST_ERROR
+    LAST_ERROR = f"{where}: {type(exc).__name__}: {exc}"
+    if _DEBUG:
+        import sys
+
+        print(f"  [llm-error] {LAST_ERROR}", file=sys.stderr, flush=True)
+
+
+def list_free_models(substr: str = "") -> list[str]:
+    """Free model ids currently served by OpenRouter, optionally filtered.
+
+    Hits the public models endpoint (no key required). Used by ``--check`` to
+    name a valid replacement slug when the configured one 404s, so a slug that
+    OpenRouter has renamed or retired can be fixed without guessing.
+    """
+    import urllib.request
+
+    try:
+        req = urllib.request.Request(
+            f"{_OPENROUTER_BASE}/models", headers={"Accept": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.load(resp)
+    except Exception as exc:
+        return [f"(could not list models: {type(exc).__name__}: {exc})"]
+
+    out = []
+    for m in data.get("data", []):
+        mid = m.get("id", "")
+        pr = m.get("pricing", {}) or {}
+        free = str(pr.get("prompt", "1")) in ("0", "0.0") and str(
+            pr.get("completion", "1")
+        ) in ("0", "0.0")
+        if free and (not substr or substr.lower() in mid.lower()):
+            out.append(mid)
+    return sorted(out)
+
+
+def check() -> tuple[bool, str]:
+    """One live round-trip on the strong tier. Returns (ok, detail).
+
+    Used by ``run.py --check`` so a misconfigured key, an unavailable model or a
+    blocked data policy surfaces as a plain message instead of an empty edition.
+    """
+    try:
+        reply = llm_strong.invoke(
+            [("system", "Reply with the single word: ok"), ("human", "ready?")]
+        ).content
+        text = reply if isinstance(reply, str) else str(reply)
+        return True, text.strip()[:200]
+    except Exception as exc:  # surface the real cause, including any HTTP body
+        detail = f"{type(exc).__name__}: {exc}"
+        body = getattr(getattr(exc, "response", None), "text", None)
+        if body:
+            detail += f"\n  body: {body[:600]}"
+        return False, detail
 
 
 def _salvage_json(text: str) -> dict | list | None:
@@ -164,9 +240,11 @@ def structured(
                 return out
             if isinstance(out, dict):
                 return schema.model_validate(out)
-        except (ValidationError, ValueError, TypeError, KeyError):
+        except (ValidationError, ValueError, TypeError, KeyError) as exc:
+            _note_error(f"{label or schema.__name__}/{method}", exc)
             continue
-        except Exception:  # transport/runtime issues: fall through to the next rung
+        except Exception as exc:  # transport/runtime issues: fall to the next rung
+            _note_error(f"{label or schema.__name__}/{method}", exc)
             continue
 
     if budget is not None and not budget.spend(label or schema.__name__):
@@ -177,7 +255,8 @@ def structured(
         if payload is None:
             return None
         return schema.model_validate(payload)
-    except Exception:
+    except Exception as exc:
+        _note_error(f"{label or schema.__name__}/plain", exc)
         return None
 
 
@@ -188,5 +267,6 @@ def prose(llm: BaseChatModel, system: str, user: str, *, budget=None, label: str
     try:
         out = llm.invoke([("system", system), ("human", user)]).content
         return out if isinstance(out, str) else str(out)
-    except Exception:
+    except Exception as exc:
+        _note_error(label or "prose", exc)
         return ""
