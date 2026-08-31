@@ -25,6 +25,7 @@ Tier 0 as plain functions, so the managers manage rather than clerk.
 from __future__ import annotations
 
 import json
+import re
 
 from newsroom.budget import Budget
 from newsroom.config import BUDGET
@@ -42,6 +43,21 @@ from newsroom.schemas import (
     TopicDecision,
     VerificationReport,
 )
+
+
+def _norm_url(url: str) -> str:
+    """Canonical key for comparing a cited URL against a harvested one.
+
+    Drops the scheme, a leading www, any query string or fragment, and a trailing
+    slash, and lower-cases the rest — so the URL variants small models emit
+    (http vs https, ?utm_..., a stray slash) still match the source they cite.
+    """
+    u = (url or "").strip().lower()
+    u = re.sub(r"^https?://", "", u)
+    u = re.sub(r"^www\.", "", u)
+    u = u.split("#", 1)[0].split("?", 1)[0]
+    return u.rstrip("/")
+
 
 # ============================================================ Tier 1: EDITOR
 
@@ -417,9 +433,20 @@ def researcher_work(
     brief.cluster_id = assignment.cluster_id
     brief.topic = assignment.topic
     brief.round = round_no
-    # Discard any claim citing a URL not in the quarantine — no invented sources.
-    known = {e["url"].rstrip("/") for e in evidence}
-    brief.claims = [c for c in brief.claims if c.source_url.rstrip("/") in known]
+    # Keep only claims whose cited URL is one we actually harvested — no invented
+    # sources. But match TOLERANTLY: small models rarely echo a URL verbatim (they
+    # flip http/https, drop or add www, a trailing slash, or a query string), and
+    # an exact string compare then drops every real claim and kills the topic. So
+    # normalise both sides, and canonicalise a match back to the quarantined URL so
+    # the downstream evidence lookup (which keys on that exact URL) still resolves.
+    known = {_norm_url(e["url"]): e["url"] for e in evidence}
+    kept = []
+    for c in brief.claims:
+        canonical = known.get(_norm_url(c.source_url))
+        if canonical:
+            c.source_url = canonical
+            kept.append(c)
+    brief.claims = kept
     if not brief.claims:
         brief.verdict = "SKIP"
         brief.reason = brief.reason or "no claims traceable to a quarantined source"
